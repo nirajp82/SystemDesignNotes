@@ -1,3 +1,3 @@
-- https://newsletter.systemdesign.one/p/amazon-s3-durability
-- https://newsletter.systemdesign.one/p/vitess-mysql
+- [How Amazon S3 Achieves 99.999999999% Durability](https://newsletter.systemdesign.one/p/amazon-s3-durability)
+- [How YouTube Was Able to Support 2.49 Billion Users With MySQL](https://newsletter.systemdesign.one/p/vitess-mysql)
 - [How Cloudflare Was Able to Support 55 Million Requests per Second With Only 15 Postgres Clusters](https://newsletter.systemdesign.one/p/vitess-mysql)
