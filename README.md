@@ -1,0 +1,3 @@
+- https://newsletter.systemdesign.one/p/amazon-s3-durability
+- https://newsletter.systemdesign.one/p/vitess-mysql
+- [How Cloudflare Was Able to Support 55 Million Requests per Second With Only 15 Postgres Clusters]([https://www.google.com](https://newsletter.systemdesign.one/p/vitess-mysql))
