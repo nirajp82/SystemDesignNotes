@@ -117,9 +117,13 @@ Using distributed locks comes with various risks, and organizations should be aw
 
    The choice of approach depends on the specific requirements of the application, including performance, consistency guarantees, and infrastructure.
 
-### Sample Code in .NET Using Redis for Distributed Locks
+Certainly! Let's break down the enhanced .NET code example for implementing distributed locks with detailed explanations, including the new retry logic for both acquiring and releasing the lock.
 
-Here is a more comprehensive example of implementing a distributed lock in .NET using the **StackExchange.Redis** library, complete with proper error handling and considerations for lock expiration:
+### Enhanced Sample Code Explanation for Distributed Locks in .NET
+
+
+
+### DistributedLockExample Class
 
 ```csharp
 using StackExchange.Redis;
@@ -130,9 +134,9 @@ using System.Threading.Tasks;
 public class DistributedLockExample
 {
     private static readonly ConnectionMultiplexer redis = ConnectionMultiplexer.Connect("localhost");
-    private static readonly IDatabase db
-
- = redis.GetDatabase();
+    private static readonly IDatabase db = redis.GetDatabase();
+    private const int MaxRetries = 5; // Maximum number of retries
+    private const int RetryDelayMilliseconds = 200; // Delay between retries
 
     public async Task ExecuteCriticalOperationAsync(string lockKey, TimeSpan lockExpiry)
     {
@@ -141,13 +145,13 @@ public class DistributedLockExample
 
         try
         {
-            // Attempt to acquire the lock
-            lockAcquired = await db.StringSetAsync(lockKey, lockValue, lockExpiry, When.NotExists);
+            // Attempt to acquire the lock with retries
+            lockAcquired = await AcquireLockWithRetriesAsync(lockKey, lockValue, lockExpiry);
 
             if (lockAcquired)
             {
                 Console.WriteLine("Lock acquired, performing the critical operation...");
-                
+
                 // Perform the critical operation here
                 await PerformCriticalOperationAsync();
 
@@ -164,17 +168,49 @@ public class DistributedLockExample
         }
         finally
         {
-            // Ensure the lock is released
+            // Ensure the lock is released with retries
             if (lockAcquired)
             {
-                // Verify that the lock value matches to avoid releasing someone else's lock
-                if (await db.StringGetAsync(lockKey) == lockValue)
-                {
-                    await db.KeyDeleteAsync(lockKey);
-                    Console.WriteLine("Lock released.");
-                }
+                await ReleaseLockWithRetriesAsync(lockKey, lockValue);
             }
         }
+    }
+
+    private async Task<bool> AcquireLockWithRetriesAsync(string lockKey, string lockValue, TimeSpan lockExpiry)
+    {
+        for (int attempt = 0; attempt < MaxRetries; attempt++)
+        {
+            // Attempt to acquire the lock
+            bool lockAcquired = await db.StringSetAsync(lockKey, lockValue, lockExpiry, When.NotExists);
+            if (lockAcquired)
+            {
+                return true; // Lock acquired successfully
+            }
+
+            // Wait before retrying
+            await Task.Delay(RetryDelayMilliseconds);
+        }
+
+        return false; // Failed to acquire the lock after retries
+    }
+
+    private async Task ReleaseLockWithRetriesAsync(string lockKey, string lockValue)
+    {
+        for (int attempt = 0; attempt < MaxRetries; attempt++)
+        {
+            // Check if the current process owns the lock before releasing
+            if (await db.StringGetAsync(lockKey) == lockValue)
+            {
+                await db.KeyDeleteAsync(lockKey);
+                Console.WriteLine("Lock released successfully.");
+                return; // Lock released successfully
+            }
+
+            // Wait before retrying
+            await Task.Delay(RetryDelayMilliseconds);
+        }
+
+        Console.WriteLine("Failed to release lock after several attempts.");
     }
 
     private async Task PerformCriticalOperationAsync()
@@ -195,22 +231,177 @@ public class DistributedLockExample
 }
 ```
 
-### Explanation of the Sample Code
+2. **Class Definition:**
+   - `DistributedLockExample`: The main class that encapsulates the logic for acquiring and releasing distributed locks.
+   - `ConnectionMultiplexer`: A thread-safe class for connecting to Redis. It manages the connection to the Redis server.
+   - `IDatabase`: Represents a connection to a Redis database. This is where we perform our operations (like setting and getting keys).
+   - `MaxRetries` and `RetryDelayMilliseconds`: Constants that define how many times the application will retry acquiring or releasing a lock, and the delay between these retries, respectively.
 
-1. **Initialization:** The code establishes a connection to a Redis instance running on localhost.
+### Critical Operation Execution Method
 
-2. **Lock Acquisition:** 
-   - The method `ExecuteCriticalOperationAsync` attempts to acquire a distributed lock by using the `StringSetAsync` method with a unique lock value and an expiration time. The `When.NotExists` condition ensures that the lock can only be set if it doesn't already exist.
+```csharp
+public async Task ExecuteCriticalOperationAsync(string lockKey, TimeSpan lockExpiry)
+{
+    string lockValue = Guid.NewGuid().ToString(); // Unique value for the lock
+    bool lockAcquired = false;
 
-3. **Critical Section:**
-   - If the lock is acquired, the method simulates a critical operation that could take time to complete, such as processing a transaction.
+    try
+    {
+        // Attempt to acquire the lock with retries
+        lockAcquired = await AcquireLockWithRetriesAsync(lockKey, lockValue, lockExpiry);
 
-4. **Lock Release:**
-   - After the critical operation, the code checks if the lock value matches the unique identifier before deleting the lock. This check prevents accidental release of locks held by other processes.
+        if (lockAcquired)
+        {
+            Console.WriteLine("Lock acquired, performing the critical operation...");
+
+            // Perform the critical operation here
+            await PerformCriticalOperationAsync();
+
+            Console.WriteLine("Operation completed successfully.");
+        }
+        else
+        {
+            Console.WriteLine("Could not acquire lock, another process might be using the resource.");
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"An error occurred: {ex.Message}");
+    }
+    finally
+    {
+        // Ensure the lock is released with retries
+        if (lockAcquired)
+        {
+            await ReleaseLockWithRetriesAsync(lockKey, lockValue);
+        }
+    }
+}
+```
+
+3. **Method Overview:**
+   - `ExecuteCriticalOperationAsync`: This asynchronous method encapsulates the logic to acquire a lock, perform a critical operation, and release the lock.
+   - `lockKey`: The unique key for the lock (usually a string).
+   - `lockExpiry`: The duration for which the lock will remain valid.
+
+4. **Lock Acquisition:**
+   - A unique `lockValue` is generated using `Guid.NewGuid().ToString()`. This ensures that each lock request has a unique identifier, preventing accidental releases by other processes.
+   - The method attempts to acquire the lock by calling `AcquireLockWithRetriesAsync`. If successful, it proceeds to execute the critical operation.
 
 5. **Error Handling:**
-   - The example includes try-catch blocks to handle potential exceptions, providing robust error handling and ensuring that the lock is released appropriately.
+   - A `try-catch` block surrounds the critical operation logic to catch and handle any exceptions that might arise during lock acquisition or operation execution.
 
+6. **Lock Release:**
+   - In the `finally` block, the method ensures that the lock is released if it was acquired. It calls `ReleaseLockWithRetriesAsync` to handle any potential failures during the release process.
+
+### Lock Acquisition with Retry Logic
+
+```csharp
+private async Task<bool> AcquireLockWithRetriesAsync(string lockKey, string lockValue, TimeSpan lockExpiry)
+{
+    for (int attempt = 0; attempt < MaxRetries; attempt++)
+    {
+        // Attempt to acquire the lock
+        bool lockAcquired = await db.StringSetAsync(lockKey, lockValue, lockExpiry, When.NotExists);
+        if (lockAcquired)
+        {
+            return true; // Lock acquired successfully
+        }
+
+        // Wait before retrying
+        await Task.Delay(RetryDelayMilliseconds);
+    }
+
+    return false; // Failed to acquire the lock after retries
+}
+```
+
+7. **Method Overview:**
+   - `AcquireLockWithRetriesAsync`: This asynchronous method attempts to acquire a distributed lock with a specified number of retries.
+   - `lockKey`, `lockValue`, and `lockExpiry`: These parameters are used to identify the lock and define its expiration.
+
+8. **Retry Loop:**
+   - The method uses a `for` loop to attempt acquiring the lock up to `MaxRetries` times.
+   - Each attempt uses `StringSetAsync` with the `When.NotExists` condition, which ensures the lock is set only if it doesn't already exist in Redis.
+
+9. **Waiting Between Attempts:**
+   - If the lock is not acquired, the method pauses execution for `RetryDelayMilliseconds` before retrying. This helps to handle transient issues such as temporary unavailability of the Redis server.
+
+10. **Return Value:**
+    - If the lock is acquired during any attempt, the method returns `true`. If all attempts fail, it returns `false`.
+
+### Lock Release with Retry Logic
+
+```csharp
+private async Task ReleaseLockWithRetriesAsync(string lockKey, string lockValue)
+{
+    for (int attempt = 0; attempt < MaxRetries; attempt++)
+    {
+        // Check if the current process owns the lock before releasing
+        if (await db.StringGetAsync(lockKey) == lockValue)
+        {
+            await db.KeyDeleteAsync(lockKey);
+            Console.WriteLine("Lock released successfully.");
+            return; // Lock released successfully
+        }
+
+        // Wait before retrying
+        await Task.Delay(RetryDelayMilliseconds);
+    }
+
+    Console.WriteLine("Failed to release lock after several attempts.");
+}
+```
+
+11. **Method Overview:**
+    - `ReleaseLockWithRetriesAsync`: This asynchronous method attempts to release the distributed lock with a specified number of retries.
+    - `lockKey` and `lockValue`: Used to identify the lock and verify ownership.
+
+12. **Ownership Check:**
+    - Before releasing the lock, the method checks whether the current process holds the lock by comparing the stored lock value with the `lockValue` generated during acquisition.
+    - If they match, the method deletes the lock using `KeyDeleteAsync`, which releases it for other processes to acquire.
+
+13. **Retry Mechanism:**
+    - Similar to the lock acquisition method, a retry loop is employed. If the lock cannot be released due to it being held by another process, it waits and retries up to `MaxRetries`.
+
+14. **Failure Notification:**
+    - If the lock cannot be released after all retry attempts, the method logs a message indicating failure.
+
+### Simulated Critical Operation
+
+```csharp
+private async Task PerformCriticalOperationAsync()
+{
+    // Simulate some work
+    await Task.Delay(5000); // Represents a time-consuming operation
+}
+```
+
+15. **Method Overview:**
+
+### Main Method to Execute the Example
+
+```csharp
+public static async Task Main(string[] args)
+{
+    DistributedLockExample example = new DistributedLockExample();
+    TimeSpan lockExpiry = TimeSpan.FromSeconds(30); // Lock expiration time
+    string lockKey = "myDistributedLock";
+
+    // Execute the critical operation with distributed lock
+    await example.ExecuteCriticalOperationAsync(lockKey, lockExpiry);
+}
+```
+
+### Summary of the code
+
+This enhanced .NET code example demonstrates a robust approach to implementing distributed locks using Redis, complete with retry logic for both acquiring and releasing locks. The following points highlight its significance:
+
+- **Lock Acquisition with Retries:** The application can handle transient failures when trying to acquire a lock, improving reliability.
+- **Lock Release with Ownership Check:** Ensures that locks are released only by the process that holds them, preventing accidental releases and potential data inconsistency.
+- **Error Handling:** Comprehensive error handling ensures that issues are logged and managed appropriately, contributing to a resilient system design.
+
+Using distributed locks effectively is crucial for maintaining data integrity and consistency in enterprise applications, especially those built on microservices architectures. This code example provides a foundation that can be expanded and adapted for various use cases where distributed resource management is necessary.
 ### Conclusion
 
 In enterprise applications, implementing distributed locks is essential for maintaining data integrity, preventing race conditions, and coordinating workflows among distributed services. Understanding the mechanisms, risks, and best practices for implementing distributed locks allows engineers to build reliable and scalable systems. The provided code sample demonstrates a practical approach to using Redis for distributed locking in .NET, emphasizing error handling and lock management strategies crucial for production environments.
