@@ -55,7 +55,6 @@ Using distributed locks comes with various risks, and organizations should be aw
 4. **Lock Expiry Issues:**
    - **Risk:** If a process crashes while holding a lock and the lock expires, other processes may acquire it and potentially cause data inconsistency.
    - **Mitigation:** Use a unique identifier for each lock acquisition, and validate that the lock is still valid before releasing it. Implement a mechanism to extend lock expiration if the operation is still ongoing.
-   - Let's break down the concept of **lock expiry issues** and how to **mitigate** them in simpler terms.
 
 ##### What Are Lock Expiry Issues?
 
