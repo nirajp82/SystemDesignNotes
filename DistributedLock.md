@@ -42,7 +42,7 @@ Using distributed locks comes with various risks, and organizations should be aw
 
 1. **Deadlocks:**
    - **Risk:** Two or more processes hold locks that the others need, leading to a situation where none can proceed.
-   - **Mitigation:** Use timeout mechanisms where locks are automatically released if not acquired within a specified time. Implement a backoff strategy to retry acquiring locks, which reduces contention and the chances of deadlocks.
+   - **Mitigation:** Use timeout mechanisms where locks are automatically released if not acquired within a specified time (Implement a timeout for acquiring locks. If a process cannot acquire a lock within a specified period, it should release any locks it holds and try again later). Implement a backoff strategy to retry acquiring locks, which reduces contention and the chances of deadlocks.
 
 2. **Lock Contention:**
    - **Risk:** High contention can lead to performance bottlenecks, as processes spend time waiting for locks instead of performing useful work.
