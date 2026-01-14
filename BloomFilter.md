@@ -125,7 +125,7 @@ User types: **`new_user`**
 
 ## 💻 Example Implementation (C# / .NET)
 
-```csharp
+```cs
 using System;
 using System.Collections;
 using System.Security.Cryptography;
